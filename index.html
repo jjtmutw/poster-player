@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>海報播放機</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script src="config.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <main id="player" class="player" aria-live="polite">
+      <div class="stage">
+        <img id="posterA" class="poster is-active" alt="" />
+        <img id="posterB" class="poster" alt="" />
+      </div>
+
+      <div id="emptyState" class="empty-state" hidden>
+        <h1>海報播放機</h1>
+        <p id="emptyMessage">正在讀取 poster 目錄...</p>
+      </div>
+
+      <section id="startPanel" class="start-panel">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>海報播放機</h1>
+            <p id="mediaSummary">準備讀取媒體檔案</p>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="startButton" type="button">開始播放</button>
+          <button id="fullscreenButton" class="ghost" type="button">全螢幕</button>
+        </div>
+      </section>
+
+      <footer id="statusBar" class="status-bar">
+        <span id="posterStatus">海報 0 / 0</span>
+        <span id="audioStatus">背景音樂：尚未播放</span>
+      </footer>
+
+      <audio id="audioPlayer" preload="auto"></audio>
+    </main>
+  </body>
+</html>
