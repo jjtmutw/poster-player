@@ -196,6 +196,10 @@ button:focus-visible {
     #050506;
 }
 
+.empty-state[hidden] {
+  display: none;
+}
+
 @media (max-width: 720px) {
   .start-panel {
     left: 12px;
