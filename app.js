@@ -32,7 +32,9 @@ const state = {
   installPrompt: null,
   touchStartX: 0,
   touchStartY: 0,
-  touchStartTime: 0
+  touchStartTime: 0,
+  tapTimer: 0,
+  lastTapTime: 0
 };
 
 const els = {
@@ -448,12 +450,33 @@ function handleTouchEnd(event) {
 
   if (absX < 16 && absY < 16 && elapsed < 600) {
     event.preventDefault();
-    togglePause();
+    handleMobileTap();
   }
 }
 
 function isInteractiveTouch(target) {
   return target.closest("button, a, input, textarea, select, audio");
+}
+
+function handleMobileTap() {
+  const now = Date.now();
+  const doubleTapWindowMs = 320;
+
+  if (now - state.lastTapTime <= doubleTapWindowMs) {
+    window.clearTimeout(state.tapTimer);
+    state.tapTimer = 0;
+    state.lastTapTime = 0;
+    toggleAudio();
+    return;
+  }
+
+  state.lastTapTime = now;
+  window.clearTimeout(state.tapTimer);
+  state.tapTimer = window.setTimeout(() => {
+    state.tapTimer = 0;
+    state.lastTapTime = 0;
+    togglePause();
+  }, doubleTapWindowMs);
 }
 
 function updateSummary() {
