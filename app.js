@@ -29,7 +29,10 @@ const state = {
   slideTimer: 0,
   paused: false,
   started: false,
-  installPrompt: null
+  installPrompt: null,
+  touchStartX: 0,
+  touchStartY: 0,
+  touchStartTime: 0
 };
 
 const els = {
@@ -114,6 +117,9 @@ window.addEventListener("load", () => {
   registerServiceWorker();
 });
 
+els.player.addEventListener("touchstart", handleTouchStart, { passive: true });
+els.player.addEventListener("touchend", handleTouchEnd, { passive: false });
+
 els.audioPlayer.addEventListener("ended", () => {
   if (!config.loopMusic || state.tracks.length === 0) {
     els.audioStatus.textContent = "背景音樂：已停止";
@@ -145,6 +151,12 @@ document.addEventListener("keydown", (event) => {
 
   if (event.key.toLowerCase() === "f") {
     requestFullscreen();
+    return;
+  }
+
+  if (event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    toggleAudio();
   }
 });
 
@@ -323,6 +335,31 @@ async function playTrack(index) {
   }
 }
 
+async function toggleAudio() {
+  if (state.tracks.length === 0) {
+    els.audioStatus.textContent = "背景音樂：沒有 MP3";
+    return;
+  }
+
+  if (!els.audioPlayer.src) {
+    await startAudio();
+    return;
+  }
+
+  if (els.audioPlayer.paused) {
+    try {
+      await els.audioPlayer.play();
+      const track = state.tracks[state.trackIndex];
+      els.audioStatus.textContent = `背景音樂：${track ? track.name : "播放中"}`;
+    } catch {
+      els.audioStatus.textContent = "背景音樂：瀏覽器需要點一下開始播放";
+    }
+  } else {
+    els.audioPlayer.pause();
+    els.audioStatus.textContent = "背景音樂：已暫停";
+  }
+}
+
 async function requestFullscreen() {
   if (state.installPrompt && !isStandaloneDisplay()) {
     await state.installPrompt.prompt();
@@ -376,6 +413,47 @@ function registerServiceWorker() {
   navigator.serviceWorker.register("service-worker.js").catch((error) => {
     console.warn("Service worker registration failed", error);
   });
+}
+
+function handleTouchStart(event) {
+  if (!isMobileViewport() || isInteractiveTouch(event.target)) return;
+  const touch = event.changedTouches[0];
+  state.touchStartX = touch.clientX;
+  state.touchStartY = touch.clientY;
+  state.touchStartTime = Date.now();
+}
+
+function handleTouchEnd(event) {
+  if (!isMobileViewport() || isInteractiveTouch(event.target)) return;
+  if (!state.touchStartTime) return;
+
+  const touch = event.changedTouches[0];
+  const dx = touch.clientX - state.touchStartX;
+  const dy = touch.clientY - state.touchStartY;
+  const elapsed = Date.now() - state.touchStartTime;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+
+  state.touchStartTime = 0;
+
+  if (absX >= 48 && absX > absY * 1.4) {
+    event.preventDefault();
+    if (dx < 0) {
+      previousPoster();
+    } else {
+      nextPoster();
+    }
+    return;
+  }
+
+  if (absX < 16 && absY < 16 && elapsed < 600) {
+    event.preventDefault();
+    togglePause();
+  }
+}
+
+function isInteractiveTouch(target) {
+  return target.closest("button, a, input, textarea, select, audio");
 }
 
 function updateSummary() {
