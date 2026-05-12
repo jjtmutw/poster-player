@@ -27,6 +27,7 @@ const state = {
   trackIndex: 0,
   activePoster: 0,
   slideTimer: 0,
+  paused: false,
   started: false,
   installPrompt: null
 };
@@ -124,14 +125,22 @@ els.audioPlayer.addEventListener("ended", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowRight" || event.key === " ") {
+  if (event.key === " ") {
     event.preventDefault();
-    nextPoster();
+    togglePause();
+    return;
   }
 
-  if (event.key === "ArrowLeft") {
+  if (event.key === "PageDown" || event.key === "ArrowRight") {
+    event.preventDefault();
+    nextPoster();
+    return;
+  }
+
+  if (event.key === "PageUp" || event.key === "ArrowLeft") {
     event.preventDefault();
     previousPoster();
+    return;
   }
 
   if (event.key.toLowerCase() === "f") {
@@ -264,6 +273,7 @@ function showPoster(index, instant = false) {
 
 function scheduleNextSlide() {
   window.clearTimeout(state.slideTimer);
+  if (state.paused) return;
   state.slideTimer = window.setTimeout(nextPoster, Math.max(1, Number(config.slideSeconds)) * 1000);
 }
 
@@ -275,6 +285,18 @@ function nextPoster() {
 function previousPoster() {
   showPoster(state.posterIndex - 1);
   scheduleNextSlide();
+}
+
+function togglePause() {
+  state.paused = !state.paused;
+
+  if (state.paused) {
+    window.clearTimeout(state.slideTimer);
+  } else {
+    scheduleNextSlide();
+  }
+
+  updateStatus();
 }
 
 async function startAudio() {
@@ -361,7 +383,8 @@ function updateSummary() {
 }
 
 function updateStatus() {
-  els.posterStatus.textContent = `海報 ${state.posters.length ? state.posterIndex + 1 : 0} / ${state.posters.length}`;
+  const playbackStatus = state.paused ? "（已暫停）" : "";
+  els.posterStatus.textContent = `海報 ${state.posters.length ? state.posterIndex + 1 : 0} / ${state.posters.length}${playbackStatus}`;
 
   if (state.tracks.length === 0) {
     els.audioStatus.textContent = "背景音樂：沒有 MP3";
