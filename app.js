@@ -27,7 +27,8 @@ const state = {
   trackIndex: 0,
   activePoster: 0,
   slideTimer: 0,
-  started: false
+  started: false,
+  installPrompt: null
 };
 
 const els = {
@@ -49,6 +50,7 @@ const els = {
 document.documentElement.style.setProperty("--transition-ms", `${config.transitionMs}ms`);
 els.statusBar.hidden = !config.showStatusBar;
 els.audioPlayer.volume = clamp(config.audioVolume, 0, 1);
+setupPwaMode();
 
 init();
 
@@ -90,6 +92,26 @@ els.startButton.addEventListener("click", async () => {
 });
 
 els.fullscreenButton.addEventListener("click", requestFullscreen);
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  state.installPrompt = event;
+  if (!isStandaloneDisplay()) {
+    els.fullscreenButton.textContent = "加入主畫面";
+  }
+});
+
+window.addEventListener("appinstalled", () => {
+  state.installPrompt = null;
+  els.fullscreenButton.textContent = "全螢幕";
+});
+
+window.addEventListener("orientationchange", nudgeMobileAddressBar);
+
+window.addEventListener("load", () => {
+  nudgeMobileAddressBar();
+  registerServiceWorker();
+});
 
 els.audioPlayer.addEventListener("ended", () => {
   if (!config.loopMusic || state.tracks.length === 0) {
@@ -280,13 +302,58 @@ async function playTrack(index) {
 }
 
 async function requestFullscreen() {
+  if (state.installPrompt && !isStandaloneDisplay()) {
+    await state.installPrompt.prompt();
+    state.installPrompt = null;
+    els.fullscreenButton.textContent = "全螢幕";
+    return;
+  }
+
   if (document.fullscreenElement) return;
 
   try {
-    await els.player.requestFullscreen();
+    await els.player.requestFullscreen({ navigationUI: "hide" });
   } catch {
     // Some browsers block fullscreen outside trusted user gestures.
   }
+}
+
+function setupPwaMode() {
+  if (isStandaloneDisplay()) {
+    document.documentElement.classList.add("is-standalone");
+    els.fullscreenButton.textContent = "全螢幕";
+    return;
+  }
+
+  if (isMobileViewport()) {
+    els.fullscreenButton.textContent = "加入主畫面";
+  }
+}
+
+function isStandaloneDisplay() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches ||
+    window.navigator.standalone === true;
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 820px)").matches ||
+    /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+}
+
+function nudgeMobileAddressBar() {
+  if (isStandaloneDisplay()) return;
+  if (!isMobileViewport()) return;
+  setTimeout(() => window.scrollTo(0, 1), 250);
+  setTimeout(() => window.scrollTo(0, 1), 900);
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  navigator.serviceWorker.register("service-worker.js").catch((error) => {
+    console.warn("Service worker registration failed", error);
+  });
 }
 
 function updateSummary() {

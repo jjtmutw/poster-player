@@ -1,0 +1,19 @@
+{
+  "name": "海報播放機",
+  "short_name": "海報播放",
+  "description": "全螢幕海報輪播與背景音樂播放器。",
+  "start_url": "./?display=standalone",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#050506",
+  "theme_color": "#050506",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
