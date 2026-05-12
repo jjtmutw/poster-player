@@ -1,6 +1,6 @@
 window.POSTER_PLAYER_CONFIG = {
   // 每張海報停留秒數。
-  slideSeconds: 8,
+  slideSeconds: 20,
 
   // GitHub Pages 建議維持這兩個目錄名稱，直接把圖片放進 poster、MP3 放進 mp3。
   posterDir: "poster",
