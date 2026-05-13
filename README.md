@@ -68,3 +68,19 @@ window.POSTER_PLAYER_CONFIG = {
 - iPhone Safari：開啟播放器網址，分享選單選「加入主畫面」，之後從主畫面圖示開啟。
 
 此專案已包含 `manifest.webmanifest`，會以 `fullscreen` 模式啟動。
+
+## Android Type-C/HDMI 直式螢幕
+
+有些 Android 手機接 Type-C/HDMI 時，系統會把外接螢幕固定成橫向輸出。播放器已設定 `manifest.webmanifest` 的 `orientation: "portrait"`，也會在全螢幕時嘗試鎖定 `portrait-primary`。
+
+如果外接直立螢幕仍被 Android 當橫向輸出，`config.js` 的 `hdmiPortraitMode` 預設為 `"auto"`，會在 Android 橫向 viewport 時把播放畫面旋轉成直式。若旋轉方向相反，可改成：
+
+```js
+hdmiPortraitMode: "rotate-left"
+```
+
+若不要自動旋轉，可改成：
+
+```js
+hdmiPortraitMode: "off"
+```

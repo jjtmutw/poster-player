@@ -31,6 +31,12 @@ window.POSTER_PLAYER_CONFIG = {
   // true 時點「開始播放」會同時要求瀏覽器進入全螢幕。
   startFullscreen: true,
 
+  // Android Type-C/HDMI 有時會把外接直立螢幕當橫向輸出。
+  // auto: Android 橫向 viewport 時自動把播放畫面旋轉成直式。
+  // off: 不旋轉。
+  // rotate-right / rotate-left: 強制指定旋轉方向。
+  hdmiPortraitMode: "auto",
+
   transitionMs: 900,
   showStatusBar: true
 };

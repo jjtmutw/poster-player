@@ -15,6 +15,7 @@ const config = {
   loopMusic: true,
   audioVolume: 0.75,
   startFullscreen: true,
+  hdmiPortraitMode: "auto",
   transitionMs: 900,
   showStatusBar: true,
   ...(window.POSTER_PLAYER_CONFIG || {})
@@ -57,6 +58,7 @@ document.documentElement.style.setProperty("--transition-ms", `${config.transiti
 els.statusBar.hidden = !config.showStatusBar;
 els.audioPlayer.volume = clamp(config.audioVolume, 0, 1);
 setupPwaMode();
+applyDisplayOrientationMode();
 
 init();
 
@@ -94,6 +96,7 @@ els.startButton.addEventListener("click", async () => {
     await requestFullscreen();
   }
 
+  await lockPortraitOrientation();
   await startAudio();
 });
 
@@ -113,9 +116,12 @@ window.addEventListener("appinstalled", () => {
 });
 
 window.addEventListener("orientationchange", nudgeMobileAddressBar);
+window.addEventListener("orientationchange", applyDisplayOrientationMode);
+window.addEventListener("resize", applyDisplayOrientationMode);
 
 window.addEventListener("load", () => {
   nudgeMobileAddressBar();
+  applyDisplayOrientationMode();
   registerServiceWorker();
 });
 
@@ -374,6 +380,7 @@ async function requestFullscreen() {
 
   try {
     await els.player.requestFullscreen({ navigationUI: "hide" });
+    await lockPortraitOrientation();
   } catch {
     // Some browsers block fullscreen outside trusted user gestures.
   }
@@ -400,6 +407,32 @@ function isStandaloneDisplay() {
 function isMobileViewport() {
   return window.matchMedia("(max-width: 820px)").matches ||
     /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+}
+
+function isAndroidDevice() {
+  return /Android/i.test(window.navigator.userAgent);
+}
+
+async function lockPortraitOrientation() {
+  if (!screen.orientation || !screen.orientation.lock) return false;
+
+  try {
+    await screen.orientation.lock("portrait-primary");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function applyDisplayOrientationMode() {
+  const mode = String(config.hdmiPortraitMode || "auto").toLowerCase();
+  const isLandscapeViewport = window.innerWidth > window.innerHeight;
+  const shouldAutoRotate = mode === "auto" && isAndroidDevice() && isLandscapeViewport;
+  const shouldRotateRight = mode === "rotate-right" || shouldAutoRotate;
+  const shouldRotateLeft = mode === "rotate-left";
+
+  els.player.classList.toggle("is-hdmi-portrait", shouldRotateRight || shouldRotateLeft);
+  els.player.classList.toggle("is-hdmi-portrait-left", shouldRotateLeft);
 }
 
 function nudgeMobileAddressBar() {
