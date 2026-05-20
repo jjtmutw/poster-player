@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#050506" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="海報播放器" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>海報播放器</title>
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="config.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <main id="player" class="player" aria-live="polite">
+      <div class="stage">
+        <img id="posterA" class="poster is-active" alt="" />
+        <img id="posterB" class="poster" alt="" />
+      </div>
+
+      <div id="emptyState" class="empty-state" hidden>
+        <h1>海報播放器</h1>
+        <p id="emptyMessage">正在讀取海報...</p>
+      </div>
+
+      <section id="startPanel" class="start-panel">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>海報播放器</h1>
+            <p id="mediaSummary">正在讀取媒體...</p>
+          </div>
+        </div>
+
+        <form id="settingsForm" class="settings-form">
+          <label>
+            <span>海報目錄</span>
+            <select id="posterDirSelect" name="posterDir"></select>
+            <input id="posterDirCustom" name="posterDirCustom" type="text" inputmode="text" autocomplete="off" placeholder="例如 poster3" hidden />
+          </label>
+
+          <label>
+            <span>音樂目錄</span>
+            <select id="mp3DirSelect" name="mp3Dir"></select>
+            <input id="mp3DirCustom" name="mp3DirCustom" type="text" inputmode="text" autocomplete="off" placeholder="例如 mp3_3" hidden />
+          </label>
+
+          <label>
+            <span>播放速度（秒）</span>
+            <input id="slideSecondsInput" name="slideSeconds" type="number" min="1" max="3600" step="1" />
+          </label>
+
+          <div class="settings-actions">
+            <button id="applySettingsButton" class="ghost" type="submit">套用設定</button>
+            <button id="resetSettingsButton" class="ghost subtle" type="button">還原</button>
+          </div>
+          <p id="settingsMessage" class="settings-message" aria-live="polite"></p>
+        </form>
+
+        <div class="actions">
+          <button id="startButton" type="button">開始播放</button>
+          <button id="fullscreenButton" class="ghost" type="button">全螢幕</button>
+        </div>
+      </section>
+
+      <footer id="statusBar" class="status-bar">
+        <span id="posterStatus">海報 0 / 0</span>
+        <span id="audioStatus">音樂：尚未播放</span>
+      </footer>
+
+      <audio id="audioPlayer" preload="auto"></audio>
+    </main>
+  </body>
+</html>
