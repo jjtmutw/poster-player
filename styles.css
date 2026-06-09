@@ -1,7 +1,7 @@
 :root {
   --transition-ms: 900ms;
   --bg: #050506;
-  --panel: rgba(18, 18, 20, 0.72);
+  --panel: rgba(18, 18, 20, 0.78);
   --panel-border: rgba(255, 255, 255, 0.14);
   --text: #f7f7f5;
   --muted: #b9babd;
@@ -38,7 +38,14 @@ button {
   padding: 0 18px;
 }
 
-button:focus-visible {
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
   outline: 3px solid rgba(231, 198, 106, 0.5);
   outline-offset: 3px;
 }
@@ -102,12 +109,14 @@ button:focus-visible {
   bottom: 24px;
   z-index: 4;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(340px, 1.25fr) auto;
-  align-items: end;
-  gap: 18px;
-  max-width: 1120px;
+  grid-template-columns: minmax(170px, 0.7fr) minmax(420px, 1.35fr) auto;
+  align-items: start;
+  gap: 16px;
+  max-width: 1240px;
+  max-height: min(74vh, 760px);
   padding: 18px;
   margin: 0 auto;
+  overflow: auto;
   border: 1px solid var(--panel-border);
   border-radius: 8px;
   background: var(--panel);
@@ -162,7 +171,7 @@ button:focus-visible {
 
 .settings-form {
   display: grid;
-  grid-template-columns: minmax(132px, 1fr) minmax(132px, 1fr) minmax(112px, 0.7fr) auto;
+  grid-template-columns: minmax(124px, 1fr) minmax(124px, 1fr) minmax(108px, 0.65fr) auto;
   align-items: end;
   gap: 10px;
   min-width: 0;
@@ -195,12 +204,6 @@ input {
   padding: 0 10px;
 }
 
-select:focus-visible,
-input:focus-visible {
-  outline: 3px solid rgba(231, 198, 106, 0.5);
-  outline-offset: 2px;
-}
-
 select option {
   background: #171719;
   color: var(--text);
@@ -229,6 +232,119 @@ input[hidden] {
   font-size: 12px;
   font-weight: 650;
   line-height: 1.4;
+}
+
+.media-order-panel {
+  grid-column: 2 / 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.media-order-section {
+  min-width: 0;
+}
+
+.media-order-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.media-order-head h2 {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.media-order-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.media-order-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.media-order-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 4px 4px 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.media-order-file {
+  display: grid;
+  grid-template-columns: 18px 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.media-order-file input {
+  min-height: 18px;
+  width: 18px;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.media-order-number {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.media-order-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.media-order-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.media-order-empty {
+  min-height: 42px;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .actions {
@@ -290,36 +406,45 @@ input[hidden] {
   display: none;
 }
 
+@media (max-width: 980px) {
+  .start-panel {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .media-order-panel {
+    grid-column: 1;
+  }
+}
+
 @media (max-width: 720px) {
   .start-panel {
     left: 12px;
     right: 12px;
     bottom: 12px;
-    grid-template-columns: 1fr;
-    align-items: stretch;
+    max-height: 78vh;
     gap: 16px;
     padding: 16px;
   }
 
-  .settings-form {
+  .settings-form,
+  .media-order-panel {
     grid-template-columns: 1fr;
   }
 
-  .settings-actions {
-    width: 100%;
-  }
-
-  .settings-actions button {
-    flex: 1 1 0;
-  }
-
+  .settings-actions,
   .actions {
     width: 100%;
   }
 
+  .settings-actions button,
   .actions button {
     flex: 1 1 0;
     padding: 0 12px;
+  }
+
+  .media-order-list {
+    max-height: 172px;
   }
 
   .status-bar {
