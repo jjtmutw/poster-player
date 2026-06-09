@@ -599,7 +599,7 @@ function registerServiceWorker() {
 }
 
 function handleTouchStart(event) {
-  if (!isMobileViewport() || isInteractiveTouch(event.target)) return;
+  if (isInteractiveTouch(event.target)) return;
   const touch = event.changedTouches[0];
   state.touchStartX = touch.clientX;
   state.touchStartY = touch.clientY;
@@ -607,7 +607,7 @@ function handleTouchStart(event) {
 }
 
 function handleTouchEnd(event) {
-  if (!isMobileViewport() || isInteractiveTouch(event.target)) return;
+  if (isInteractiveTouch(event.target)) return;
   if (!state.touchStartTime) return;
 
   const touch = event.changedTouches[0];
@@ -631,7 +631,7 @@ function handleTouchEnd(event) {
 
   if (absX < 16 && absY < 16 && elapsed < 600) {
     event.preventDefault();
-    handleMobileTap();
+    handleTouchTap();
   }
 }
 
@@ -639,7 +639,7 @@ function isInteractiveTouch(target) {
   return target.closest("button, a, input, textarea, select, audio");
 }
 
-function handleMobileTap() {
+function handleTouchTap() {
   const now = Date.now();
   const doubleTapWindowMs = 320;
 
@@ -647,7 +647,7 @@ function handleMobileTap() {
     window.clearTimeout(state.tapTimer);
     state.tapTimer = 0;
     state.lastTapTime = 0;
-    toggleAudio();
+    togglePause();
     return;
   }
 
@@ -656,7 +656,7 @@ function handleMobileTap() {
   state.tapTimer = window.setTimeout(() => {
     state.tapTimer = 0;
     state.lastTapTime = 0;
-    togglePause();
+    nextPoster();
   }, doubleTapWindowMs);
 }
 
