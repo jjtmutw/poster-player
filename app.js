@@ -35,6 +35,8 @@ const initialSettings = {
 };
 
 const state = {
+  availablePosters: [],
+  availableTracks: [],
   posters: [],
   tracks: [],
   posterIndex: 0,
@@ -44,6 +46,7 @@ const state = {
   paused: false,
   started: false,
   installPrompt: null,
+  mediaPrefs: {},
   touchStartX: 0,
   touchStartY: 0,
   touchStartTime: 0,
@@ -68,6 +71,10 @@ const els = {
   slideSecondsInput: document.getElementById("slideSecondsInput"),
   settingsMessage: document.getElementById("settingsMessage"),
   resetSettingsButton: document.getElementById("resetSettingsButton"),
+  posterOrderList: document.getElementById("posterOrderList"),
+  trackOrderList: document.getElementById("trackOrderList"),
+  posterOrderCount: document.getElementById("posterOrderCount"),
+  trackOrderCount: document.getElementById("trackOrderCount"),
   statusBar: document.getElementById("statusBar"),
   posterStatus: document.getElementById("posterStatus"),
   audioStatus: document.getElementById("audioStatus"),
@@ -100,8 +107,8 @@ async function loadSelectedMedia() {
       loadMedia(config.mp3Dir, config.audioExtensions)
     ]);
 
-    state.posters = config.shufflePosters ? shuffle(posters) : posters;
-    state.tracks = config.shuffleMusic ? shuffle(tracks) : tracks;
+    state.availablePosters = applyMediaPreferences("poster", config.shufflePosters ? shuffle(posters) : posters);
+    state.availableTracks = applyMediaPreferences("track", config.shuffleMusic ? shuffle(tracks) : tracks);
     state.posterIndex = 0;
     state.trackIndex = 0;
     state.activePoster = 0;
@@ -109,12 +116,14 @@ async function loadSelectedMedia() {
     els.audioPlayer.removeAttribute("src");
     els.audioPlayer.load();
 
+    applyActiveMedia();
+    renderMediaOrderLists();
     updateSummary();
     updateStatus();
 
     if (state.posters.length === 0) {
-      showEmpty(`找不到海報檔案。請確認 ${config.posterDir}/ 內有圖片，或建立 ${config.posterDir}/manifest.json。`);
-      els.settingsMessage.textContent = "目前海報目錄沒有可播放的圖片。";
+      showEmpty(`找不到可播放的海報。請確認 ${config.posterDir}/ 內有圖片，或至少勾選一張海報。`);
+      els.settingsMessage.textContent = "目前沒有可播放的海報。";
       return;
     }
 
@@ -160,6 +169,7 @@ els.resetSettingsButton.addEventListener("click", async () => {
   config.slideSeconds = initialSettings.slideSeconds;
   config.availablePosterDirs = [...initialSettings.availablePosterDirs];
   config.availableMp3Dirs = [...initialSettings.availableMp3Dirs];
+  state.mediaPrefs = {};
   setupSettingsForm();
   saveSettings();
   await loadSelectedMedia();
@@ -167,6 +177,10 @@ els.resetSettingsButton.addEventListener("click", async () => {
 
 els.posterDirSelect.addEventListener("change", syncCustomDirectoryInputs);
 els.mp3DirSelect.addEventListener("change", syncCustomDirectoryInputs);
+els.posterOrderList.addEventListener("click", handleMediaOrderClick);
+els.trackOrderList.addEventListener("click", handleMediaOrderClick);
+els.posterOrderList.addEventListener("change", handleMediaOrderChange);
+els.trackOrderList.addEventListener("change", handleMediaOrderChange);
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
@@ -399,6 +413,9 @@ function applySavedSettings() {
     if (Array.isArray(saved.availableMp3Dirs)) {
       config.availableMp3Dirs = uniqueDirs([...saved.availableMp3Dirs, ...config.availableMp3Dirs]);
     }
+    if (saved.mediaPrefs && typeof saved.mediaPrefs === "object") {
+      state.mediaPrefs = saved.mediaPrefs;
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
@@ -410,8 +427,207 @@ function saveSettings() {
     mp3Dir: config.mp3Dir,
     slideSeconds: config.slideSeconds,
     availablePosterDirs: config.availablePosterDirs,
-    availableMp3Dirs: config.availableMp3Dirs
+    availableMp3Dirs: config.availableMp3Dirs,
+    mediaPrefs: state.mediaPrefs
   }));
+}
+
+function applyMediaPreferences(kind, files) {
+  const pref = getMediaPreference(kind);
+  const order = Array.isArray(pref.order) ? pref.order : [];
+  const disabled = new Set(Array.isArray(pref.disabled) ? pref.disabled : []);
+  const byName = new Map(files.map((file) => [file.name, file]));
+  const ordered = [];
+
+  for (const name of order) {
+    const file = byName.get(name);
+    if (!file) continue;
+    ordered.push(file);
+    byName.delete(name);
+  }
+
+  ordered.push(...[...byName.values()].sort(compareByName));
+  return ordered.map((file) => ({ ...file, enabled: !disabled.has(file.name) }));
+}
+
+function getMediaPreference(kind) {
+  const key = mediaPreferenceKey(kind);
+  if (!state.mediaPrefs[key]) {
+    state.mediaPrefs[key] = { order: [], disabled: [] };
+  }
+  return state.mediaPrefs[key];
+}
+
+function mediaPreferenceKey(kind) {
+  const dir = kind === "poster" ? config.posterDir : config.mp3Dir;
+  return `${kind}:${trimSlashes(dir)}`;
+}
+
+function saveMediaPreference(kind) {
+  const items = getAvailableMedia(kind);
+  state.mediaPrefs[mediaPreferenceKey(kind)] = {
+    order: items.map((item) => item.name),
+    disabled: items.filter((item) => !item.enabled).map((item) => item.name)
+  };
+  saveSettings();
+}
+
+function applyActiveMedia() {
+  state.posters = state.availablePosters.filter((item) => item.enabled);
+  state.tracks = state.availableTracks.filter((item) => item.enabled);
+  state.posterIndex = normalizeIndex(state.posterIndex, Math.max(1, state.posters.length));
+  state.trackIndex = normalizeIndex(state.trackIndex, Math.max(1, state.tracks.length));
+}
+
+function renderMediaOrderLists() {
+  renderMediaOrderList("poster", els.posterOrderList, state.availablePosters);
+  renderMediaOrderList("track", els.trackOrderList, state.availableTracks);
+  updateOrderCounts();
+}
+
+function renderMediaOrderList(kind, listEl, items) {
+  listEl.replaceChildren();
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "media-order-empty";
+    empty.textContent = kind === "poster" ? "這個目錄沒有可選海報。" : "這個目錄沒有可選 MP3。";
+    listEl.append(empty);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "media-order-row";
+    row.dataset.kind = kind;
+    row.dataset.index = String(index);
+
+    const label = document.createElement("label");
+    label.className = "media-order-file";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.enabled;
+    checkbox.dataset.action = "toggle";
+    checkbox.dataset.kind = kind;
+    checkbox.dataset.index = String(index);
+
+    const order = document.createElement("span");
+    order.className = "media-order-number";
+    order.textContent = String(index + 1);
+
+    const name = document.createElement("span");
+    name.className = "media-order-name";
+    name.textContent = item.name;
+
+    label.append(checkbox, order, name);
+
+    const controls = document.createElement("div");
+    controls.className = "media-order-controls";
+    controls.append(
+      orderButton("up", kind, index, "上移", index === 0),
+      orderButton("down", kind, index, "下移", index === items.length - 1)
+    );
+
+    row.append(label, controls);
+    listEl.append(row);
+  });
+}
+
+function orderButton(action, kind, index, label, disabled) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "icon-button";
+  button.dataset.action = action;
+  button.dataset.kind = kind;
+  button.dataset.index = String(index);
+  button.disabled = disabled;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.textContent = action === "up" ? "↑" : "↓";
+  return button;
+}
+
+function updateOrderCounts() {
+  const selectedPosters = state.availablePosters.filter((item) => item.enabled).length;
+  const selectedTracks = state.availableTracks.filter((item) => item.enabled).length;
+  els.posterOrderCount.textContent = `${selectedPosters} / ${state.availablePosters.length} 張`;
+  els.trackOrderCount.textContent = `${selectedTracks} / ${state.availableTracks.length} 首`;
+}
+
+function handleMediaOrderClick(event) {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const kind = button.dataset.kind;
+  const index = Number(button.dataset.index);
+  if (!Number.isInteger(index)) return;
+
+  if (button.dataset.action === "up") {
+    moveMediaItem(kind, index, -1);
+  } else if (button.dataset.action === "down") {
+    moveMediaItem(kind, index, 1);
+  }
+}
+
+function handleMediaOrderChange(event) {
+  const checkbox = event.target.closest("input[type='checkbox'][data-action='toggle']");
+  if (!checkbox) return;
+
+  const kind = checkbox.dataset.kind;
+  const index = Number(checkbox.dataset.index);
+  const items = getAvailableMedia(kind);
+  if (!items[index]) return;
+
+  items[index].enabled = checkbox.checked;
+  saveMediaPreference(kind);
+  refreshPlaybackAfterOrderChange(kind);
+}
+
+function moveMediaItem(kind, index, delta) {
+  const items = getAvailableMedia(kind);
+  const nextIndex = index + delta;
+  if (!items[index] || nextIndex < 0 || nextIndex >= items.length) return;
+
+  [items[index], items[nextIndex]] = [items[nextIndex], items[index]];
+  saveMediaPreference(kind);
+  refreshPlaybackAfterOrderChange(kind);
+}
+
+function getAvailableMedia(kind) {
+  return kind === "poster" ? state.availablePosters : state.availableTracks;
+}
+
+function refreshPlaybackAfterOrderChange(kind) {
+  const wasAudioPlaying = state.started && !els.audioPlayer.paused && kind === "track";
+  applyActiveMedia();
+  renderMediaOrderLists();
+  updateSummary();
+  updateStatus();
+
+  if (kind === "poster") {
+    if (state.posters.length === 0) {
+      showEmpty("請至少勾選一張海報。");
+      return;
+    }
+    hideEmpty();
+    showPoster(0, true);
+    scheduleNextSlide();
+    return;
+  }
+
+  if (state.tracks.length === 0) {
+    els.audioPlayer.pause();
+    els.audioPlayer.removeAttribute("src");
+    els.audioPlayer.load();
+    updateStatus();
+    return;
+  }
+
+  if (wasAudioPlaying) {
+    state.trackIndex = 0;
+    startAudio();
+  }
 }
 
 function showPoster(index, instant = false) {
@@ -441,16 +657,18 @@ function showPoster(index, instant = false) {
 
 function scheduleNextSlide() {
   window.clearTimeout(state.slideTimer);
-  if (state.paused) return;
+  if (state.paused || state.posters.length === 0) return;
   state.slideTimer = window.setTimeout(nextPoster, Math.max(1, Number(config.slideSeconds)) * 1000);
 }
 
 function nextPoster() {
+  if (state.posters.length === 0) return;
   showPoster(state.posterIndex + 1);
   scheduleNextSlide();
 }
 
 function previousPoster() {
+  if (state.posters.length === 0) return;
   showPoster(state.posterIndex - 1);
   scheduleNextSlide();
 }
@@ -469,7 +687,7 @@ function togglePause() {
 
 async function startAudio() {
   if (state.tracks.length === 0) {
-    els.audioStatus.textContent = "音樂：沒有 MP3";
+    els.audioStatus.textContent = "音樂：沒有可播放的 MP3";
     return;
   }
 
@@ -477,7 +695,10 @@ async function startAudio() {
 }
 
 async function playTrack(index) {
-  const track = state.tracks[index];
+  if (state.tracks.length === 0) return;
+
+  state.trackIndex = normalizeIndex(index, state.tracks.length);
+  const track = state.tracks[state.trackIndex];
   if (!track) return;
 
   els.audioPlayer.src = track.url;
@@ -493,7 +714,7 @@ async function playTrack(index) {
 
 async function toggleAudio() {
   if (state.tracks.length === 0) {
-    els.audioStatus.textContent = "音樂：沒有 MP3";
+    els.audioStatus.textContent = "音樂：沒有可播放的 MP3";
     return;
   }
 
@@ -636,7 +857,7 @@ function handleTouchEnd(event) {
 }
 
 function isInteractiveTouch(target) {
-  return target.closest("button, a, input, textarea, select, audio");
+  return target.closest("button, a, input, textarea, select, audio, .media-order-panel");
 }
 
 function handleTouchTap() {
@@ -669,7 +890,7 @@ function updateStatus() {
   els.posterStatus.textContent = `海報 ${state.posters.length ? state.posterIndex + 1 : 0} / ${state.posters.length}${playbackStatus}`;
 
   if (state.tracks.length === 0) {
-    els.audioStatus.textContent = "音樂：沒有 MP3";
+    els.audioStatus.textContent = "音樂：沒有可播放的 MP3";
   } else if (!els.audioPlayer.src) {
     els.audioStatus.textContent = `音樂：${state.tracks.length} 首待播放`;
   }
@@ -710,6 +931,7 @@ function compareByName(a, b) {
 }
 
 function normalizeIndex(index, length) {
+  if (length <= 0) return 0;
   return ((index % length) + length) % length;
 }
 
