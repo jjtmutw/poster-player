@@ -57,11 +57,29 @@
           </label>
 
           <div class="settings-actions">
-            <button id="applySettingsButton" class="ghost" type="submit">套用設定</button>
+            <button id="applySettingsButton" class="ghost" type="submit">套用目錄</button>
             <button id="resetSettingsButton" class="ghost subtle" type="button">還原</button>
           </div>
           <p id="settingsMessage" class="settings-message" aria-live="polite"></p>
         </form>
+
+        <div id="mediaOrderPanel" class="media-order-panel">
+          <section class="media-order-section" aria-labelledby="posterOrderTitle">
+            <div class="media-order-head">
+              <h2 id="posterOrderTitle">海報播放順序</h2>
+              <span id="posterOrderCount">0 張</span>
+            </div>
+            <div id="posterOrderList" class="media-order-list" data-kind="poster"></div>
+          </section>
+
+          <section class="media-order-section" aria-labelledby="trackOrderTitle">
+            <div class="media-order-head">
+              <h2 id="trackOrderTitle">音樂播放順序</h2>
+              <span id="trackOrderCount">0 首</span>
+            </div>
+            <div id="trackOrderList" class="media-order-list" data-kind="track"></div>
+          </section>
+        </div>
 
         <div class="actions">
           <button id="startButton" type="button">開始播放</button>
