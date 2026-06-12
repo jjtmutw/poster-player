@@ -14,6 +14,7 @@ const config = {
   githubRepo: "",
   githubBranch: "main",
   imageExtensions: ["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "svg"],
+  videoExtensions: ["mp4", "webm", "mov", "m4v"],
   audioExtensions: ["mp3"],
   shufflePosters: false,
   shuffleMusic: false,
@@ -62,6 +63,8 @@ const els = {
   player: document.getElementById("player"),
   posterA: document.getElementById("posterA"),
   posterB: document.getElementById("posterB"),
+  videoA: document.getElementById("videoA"),
+  videoB: document.getElementById("videoB"),
   emptyState: document.getElementById("emptyState"),
   emptyMessage: document.getElementById("emptyMessage"),
   startPanel: document.getElementById("startPanel"),
@@ -108,7 +111,7 @@ async function loadSelectedMedia() {
 
   try {
     const [posters, tracks, voiceTracks] = await Promise.all([
-      loadMedia(config.posterDir, config.imageExtensions),
+      loadMedia(config.posterDir, posterExtensions()),
       loadMedia(config.mp3Dir, config.audioExtensions),
       loadMedia(config.posterDir, config.audioExtensions)
     ]);
@@ -167,6 +170,7 @@ els.startButton.addEventListener("click", async () => {
   } else {
     await startAudio();
   }
+  startCurrentVideoIfNeeded();
 });
 
 els.fullscreenButton.addEventListener("click", requestFullscreen);
@@ -239,6 +243,9 @@ els.audioPlayer.addEventListener("ended", () => {
   state.trackIndex = (state.trackIndex + 1) % state.tracks.length;
   playTrack(state.trackIndex);
 });
+
+els.videoA.addEventListener("ended", handleVideoEnded);
+els.videoB.addEventListener("ended", handleVideoEnded);
 
 document.addEventListener("keydown", (event) => {
   if (event.key === " ") {
@@ -670,29 +677,101 @@ function showPoster(index, instant = false) {
 
   state.posterIndex = normalizeIndex(index, state.posters.length);
   const current = state.posters[state.posterIndex];
-  const nextEl = state.activePoster === 0 ? els.posterB : els.posterA;
-  const currentEl = state.activePoster === 0 ? els.posterA : els.posterB;
-
-  nextEl.src = current.url;
-  nextEl.alt = current.name;
+  const nextSlot = state.activePoster === 0 ? 1 : 0;
+  const currentSlot = state.activePoster;
 
   if (instant) {
-    currentEl.src = current.url;
-    currentEl.alt = current.name;
-    currentEl.classList.add("is-active");
-    nextEl.classList.remove("is-active");
+    stopSlot(0);
+    stopSlot(1);
+    prepareSlot(0, current);
+    setSlotActive(0, true);
+    setSlotActive(1, false);
+    state.activePoster = 0;
   } else {
-    nextEl.classList.add("is-active");
-    currentEl.classList.remove("is-active");
-    state.activePoster = state.activePoster === 0 ? 1 : 0;
+    stopSlot(nextSlot);
+    prepareSlot(nextSlot, current);
+    setSlotActive(nextSlot, true);
+    setSlotActive(currentSlot, false);
+    stopSlot(currentSlot);
+    state.activePoster = nextSlot;
   }
 
   updateStatus();
+  startCurrentVideoIfNeeded();
+}
+
+function mediaSlot(slot) {
+  return slot === 0
+    ? { image: els.posterA, video: els.videoA }
+    : { image: els.posterB, video: els.videoB };
+}
+
+function prepareSlot(slot, media) {
+  const { image, video } = mediaSlot(slot);
+
+  if (isVideoMedia(media)) {
+    image.removeAttribute("src");
+    image.alt = "";
+    video.src = media.url;
+    video.setAttribute("aria-label", media.name);
+    video.playsInline = true;
+    video.preload = "auto";
+    return;
+  }
+
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  image.src = media.url;
+  image.alt = media.name;
+}
+
+function setSlotActive(slot, active) {
+  const { image, video } = mediaSlot(slot);
+  const media = state.posters[state.posterIndex];
+  const activeElement = media && isVideoMedia(media) ? video : image;
+  image.classList.toggle("is-active", active && activeElement === image);
+  video.classList.toggle("is-active", active && activeElement === video);
+}
+
+function stopSlot(slot) {
+  const { video } = mediaSlot(slot);
+  video.pause();
+  video.currentTime = 0;
+}
+
+function currentPoster() {
+  return state.posters[state.posterIndex] || null;
+}
+
+function startCurrentVideoIfNeeded() {
+  const media = currentPoster();
+  if (!state.started || state.paused || !isVideoMedia(media)) return;
+
+  const { video } = mediaSlot(state.activePoster);
+  video.play().catch(() => {
+    els.settingsMessage.textContent = "Video: tap start to allow playback";
+    els.startPanel.classList.remove("is-hidden");
+  });
+}
+
+function pauseCurrentVideo() {
+  const media = currentPoster();
+  if (!isVideoMedia(media)) return;
+  mediaSlot(state.activePoster).video.pause();
+}
+
+function handleVideoEnded(event) {
+  const media = currentPoster();
+  if (!media || event.currentTarget !== mediaSlot(state.activePoster).video) return;
+  if (isPosterVoiceMode() && voiceForPoster(media)) return;
+  nextPoster();
 }
 
 function scheduleNextSlide() {
   window.clearTimeout(state.slideTimer);
   if (state.paused || state.posters.length === 0) return;
+  if (state.started && isVideoMedia(currentPoster())) return;
   state.slideTimer = window.setTimeout(nextPoster, Math.max(1, Number(config.slideSeconds)) * 1000);
 }
 
@@ -721,6 +800,7 @@ function togglePause() {
 
   if (state.paused) {
     window.clearTimeout(state.slideTimer);
+    pauseCurrentVideo();
     if (isPosterVoiceMode()) {
       els.audioPlayer.pause();
     }
@@ -730,7 +810,9 @@ function togglePause() {
     } else {
       startPosterVoiceForCurrent();
     }
+    startCurrentVideoIfNeeded();
   } else {
+    startCurrentVideoIfNeeded();
     scheduleNextSlide();
   }
 
@@ -1009,8 +1091,16 @@ function hideEmpty() {
   els.emptyMessage.textContent = "";
 }
 
+function posterExtensions() {
+  return [...config.imageExtensions, ...config.videoExtensions];
+}
+
 function isPosterVoiceMode() {
   return config.audioMode === "posterVoice";
+}
+
+function isVideoMedia(media) {
+  return Boolean(media && hasExtension(media.name, config.videoExtensions));
 }
 
 function buildVoiceMap(tracks) {

@@ -22,6 +22,7 @@ window.POSTER_PLAYER_CONFIG = {
   githubBranch: "main",
 
   imageExtensions: ["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "svg"],
+  videoExtensions: ["mp4", "webm", "mov", "m4v"],
   audioExtensions: ["mp3"],
 
   shufflePosters: false,
