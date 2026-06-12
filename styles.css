@@ -171,7 +171,7 @@ input:focus-visible {
 
 .settings-form {
   display: grid;
-  grid-template-columns: minmax(124px, 1fr) minmax(124px, 1fr) minmax(108px, 0.65fr) auto;
+  grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) minmax(104px, 0.65fr) minmax(120px, 0.8fr) auto;
   align-items: end;
   gap: 10px;
   min-width: 0;

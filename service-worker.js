@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_NAME = "poster-player-shell-v5";
+const CACHE_NAME = "poster-player-shell-v6";
 const SHELL_FILES = [
   "./",
   "./index.html",

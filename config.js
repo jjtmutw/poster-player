@@ -26,6 +26,7 @@ window.POSTER_PLAYER_CONFIG = {
 
   shufflePosters: false,
   shuffleMusic: false,
+  audioMode: "background",
   loopMusic: true,
   audioVolume: 0.75,
 

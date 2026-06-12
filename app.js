@@ -17,6 +17,7 @@ const config = {
   audioExtensions: ["mp3"],
   shufflePosters: false,
   shuffleMusic: false,
+  audioMode: "background",
   loopMusic: true,
   audioVolume: 0.75,
   startFullscreen: true,
@@ -30,6 +31,7 @@ const initialSettings = {
   posterDir: config.posterDir,
   mp3Dir: config.mp3Dir,
   slideSeconds: config.slideSeconds,
+  audioMode: config.audioMode,
   availablePosterDirs: [...config.availablePosterDirs],
   availableMp3Dirs: [...config.availableMp3Dirs]
 };
@@ -37,6 +39,8 @@ const initialSettings = {
 const state = {
   availablePosters: [],
   availableTracks: [],
+  voiceTracks: [],
+  voiceByPoster: new Map(),
   posters: [],
   tracks: [],
   posterIndex: 0,
@@ -69,6 +73,7 @@ const els = {
   mp3DirSelect: document.getElementById("mp3DirSelect"),
   mp3DirCustom: document.getElementById("mp3DirCustom"),
   slideSecondsInput: document.getElementById("slideSecondsInput"),
+  audioModeSelect: document.getElementById("audioModeSelect"),
   settingsMessage: document.getElementById("settingsMessage"),
   resetSettingsButton: document.getElementById("resetSettingsButton"),
   posterOrderList: document.getElementById("posterOrderList"),
@@ -102,13 +107,16 @@ async function loadSelectedMedia() {
   hideEmpty();
 
   try {
-    const [posters, tracks] = await Promise.all([
+    const [posters, tracks, voiceTracks] = await Promise.all([
       loadMedia(config.posterDir, config.imageExtensions),
-      loadMedia(config.mp3Dir, config.audioExtensions)
+      loadMedia(config.mp3Dir, config.audioExtensions),
+      loadMedia(config.posterDir, config.audioExtensions)
     ]);
 
     state.availablePosters = applyMediaPreferences("poster", config.shufflePosters ? shuffle(posters) : posters);
     state.availableTracks = applyMediaPreferences("track", config.shuffleMusic ? shuffle(tracks) : tracks);
+    state.voiceTracks = voiceTracks;
+    state.voiceByPoster = buildVoiceMap(voiceTracks);
     state.posterIndex = 0;
     state.trackIndex = 0;
     state.activePoster = 0;
@@ -128,10 +136,14 @@ async function loadSelectedMedia() {
     }
 
     showPoster(0, true);
-    scheduleNextSlide();
+    if (state.started && isPosterVoiceMode()) {
+      await startPosterVoiceForCurrent();
+    } else {
+      scheduleNextSlide();
+    }
     els.settingsMessage.textContent = `已載入 ${config.posterDir} 和 ${config.mp3Dir}`;
 
-    if (state.started) {
+    if (state.started && !isPosterVoiceMode()) {
       await startAudio();
     }
   } catch (error) {
@@ -150,7 +162,11 @@ els.startButton.addEventListener("click", async () => {
   }
 
   await lockPortraitOrientation();
-  await startAudio();
+  if (isPosterVoiceMode()) {
+    await startPosterVoiceForCurrent();
+  } else {
+    await startAudio();
+  }
 });
 
 els.fullscreenButton.addEventListener("click", requestFullscreen);
@@ -167,6 +183,7 @@ els.resetSettingsButton.addEventListener("click", async () => {
   config.posterDir = initialSettings.posterDir;
   config.mp3Dir = initialSettings.mp3Dir;
   config.slideSeconds = initialSettings.slideSeconds;
+  config.audioMode = initialSettings.audioMode;
   config.availablePosterDirs = [...initialSettings.availablePosterDirs];
   config.availableMp3Dirs = [...initialSettings.availableMp3Dirs];
   state.mediaPrefs = {};
@@ -209,6 +226,11 @@ els.player.addEventListener("touchstart", handleTouchStart, { passive: true });
 els.player.addEventListener("touchend", handleTouchEnd, { passive: false });
 
 els.audioPlayer.addEventListener("ended", () => {
+  if (isPosterVoiceMode()) {
+    nextPoster();
+    return;
+  }
+
   if (!config.loopMusic || state.tracks.length === 0) {
     els.audioStatus.textContent = "音樂：已停止";
     return;
@@ -350,6 +372,7 @@ function setupSettingsForm() {
   fillDirectorySelect(els.posterDirSelect, config.availablePosterDirs, config.posterDir);
   fillDirectorySelect(els.mp3DirSelect, config.availableMp3Dirs, config.mp3Dir);
   els.slideSecondsInput.value = Math.max(1, Number(config.slideSeconds) || 8);
+  els.audioModeSelect.value = isPosterVoiceMode() ? "posterVoice" : "background";
   syncCustomDirectoryInputs();
 }
 
@@ -388,6 +411,7 @@ function applySettingsFromForm() {
   config.posterDir = selectedDirectory(els.posterDirSelect, els.posterDirCustom);
   config.mp3Dir = selectedDirectory(els.mp3DirSelect, els.mp3DirCustom);
   config.slideSeconds = clamp(els.slideSecondsInput.value, 1, 3600);
+  config.audioMode = els.audioModeSelect.value === "posterVoice" ? "posterVoice" : "background";
   config.availablePosterDirs = uniqueDirs([config.posterDir, ...config.availablePosterDirs]);
   config.availableMp3Dirs = uniqueDirs([config.mp3Dir, ...config.availableMp3Dirs]);
   setupSettingsForm();
@@ -407,6 +431,7 @@ function applySavedSettings() {
     if (saved.posterDir) config.posterDir = trimSlashes(saved.posterDir);
     if (saved.mp3Dir) config.mp3Dir = trimSlashes(saved.mp3Dir);
     if (saved.slideSeconds) config.slideSeconds = clamp(saved.slideSeconds, 1, 3600);
+    if (saved.audioMode) config.audioMode = saved.audioMode === "posterVoice" ? "posterVoice" : "background";
     if (Array.isArray(saved.availablePosterDirs)) {
       config.availablePosterDirs = uniqueDirs([...saved.availablePosterDirs, ...config.availablePosterDirs]);
     }
@@ -426,6 +451,7 @@ function saveSettings() {
     posterDir: config.posterDir,
     mp3Dir: config.mp3Dir,
     slideSeconds: config.slideSeconds,
+    audioMode: config.audioMode,
     availablePosterDirs: config.availablePosterDirs,
     availableMp3Dirs: config.availableMp3Dirs,
     mediaPrefs: state.mediaPrefs
@@ -612,7 +638,16 @@ function refreshPlaybackAfterOrderChange(kind) {
     }
     hideEmpty();
     showPoster(0, true);
-    scheduleNextSlide();
+    if (state.started && isPosterVoiceMode()) {
+      startPosterVoiceForCurrent();
+    } else {
+      scheduleNextSlide();
+    }
+    return;
+  }
+
+  if (isPosterVoiceMode()) {
+    updateStatus();
     return;
   }
 
@@ -664,13 +699,21 @@ function scheduleNextSlide() {
 function nextPoster() {
   if (state.posters.length === 0) return;
   showPoster(state.posterIndex + 1);
-  scheduleNextSlide();
+  if (state.started && isPosterVoiceMode()) {
+    startPosterVoiceForCurrent();
+  } else {
+    scheduleNextSlide();
+  }
 }
 
 function previousPoster() {
   if (state.posters.length === 0) return;
   showPoster(state.posterIndex - 1);
-  scheduleNextSlide();
+  if (state.started && isPosterVoiceMode()) {
+    startPosterVoiceForCurrent();
+  } else {
+    scheduleNextSlide();
+  }
 }
 
 function togglePause() {
@@ -678,6 +721,15 @@ function togglePause() {
 
   if (state.paused) {
     window.clearTimeout(state.slideTimer);
+    if (isPosterVoiceMode()) {
+      els.audioPlayer.pause();
+    }
+  } else if (isPosterVoiceMode()) {
+    if (els.audioPlayer.src) {
+      els.audioPlayer.play().catch(() => startPosterVoiceForCurrent());
+    } else {
+      startPosterVoiceForCurrent();
+    }
   } else {
     scheduleNextSlide();
   }
@@ -692,6 +744,36 @@ async function startAudio() {
   }
 
   await playTrack(state.trackIndex);
+}
+
+async function startPosterVoiceForCurrent() {
+  window.clearTimeout(state.slideTimer);
+
+  if (!isPosterVoiceMode() || state.posters.length === 0 || state.paused) return;
+
+  const poster = state.posters[state.posterIndex];
+  const voice = voiceForPoster(poster);
+  els.audioPlayer.pause();
+  els.audioPlayer.removeAttribute("src");
+  els.audioPlayer.load();
+
+  if (!voice) {
+    els.audioStatus.textContent = poster
+      ? `Voice: ${poster.name} has no matching MP3`
+      : "Voice: no poster selected";
+    scheduleNextSlide();
+    return;
+  }
+
+  els.audioPlayer.src = voice.url;
+  els.audioStatus.textContent = `Voice: ${voice.name}`;
+
+  try {
+    await els.audioPlayer.play();
+  } catch {
+    els.audioStatus.textContent = "Voice: tap start to allow playback";
+    els.startPanel.classList.remove("is-hidden");
+  }
 }
 
 async function playTrack(index) {
@@ -713,6 +795,11 @@ async function playTrack(index) {
 }
 
 async function toggleAudio() {
+  if (isPosterVoiceMode()) {
+    togglePause();
+    return;
+  }
+
   if (state.tracks.length === 0) {
     els.audioStatus.textContent = "音樂：沒有可播放的 MP3";
     return;
@@ -882,6 +969,12 @@ function handleTouchTap() {
 }
 
 function updateSummary() {
+  if (isPosterVoiceMode()) {
+    const voiceCount = state.posters.filter((poster) => voiceForPoster(poster)).length;
+    els.mediaSummary.textContent = `${state.posters.length} posters, ${voiceCount} voice tracks`;
+    return;
+  }
+
   els.mediaSummary.textContent = `${state.posters.length} 張海報，${state.tracks.length} 首音樂`;
 }
 
@@ -893,6 +986,13 @@ function updateStatus() {
     els.audioStatus.textContent = "音樂：沒有可播放的 MP3";
   } else if (!els.audioPlayer.src) {
     els.audioStatus.textContent = `音樂：${state.tracks.length} 首待播放`;
+  }
+  if (isPosterVoiceMode()) {
+    const poster = state.posters[state.posterIndex];
+    const voice = voiceForPoster(poster);
+    if (!els.audioPlayer.src) {
+      els.audioStatus.textContent = voice ? `Voice ready: ${voice.name}` : "Voice: no matching MP3";
+    }
   }
 }
 
@@ -907,6 +1007,32 @@ function showEmpty(message) {
 function hideEmpty() {
   els.emptyState.hidden = true;
   els.emptyMessage.textContent = "";
+}
+
+function isPosterVoiceMode() {
+  return config.audioMode === "posterVoice";
+}
+
+function buildVoiceMap(tracks) {
+  const map = new Map();
+  for (const track of tracks) {
+    const key = baseNameWithoutExtension(track.name);
+    if (key && !map.has(key)) {
+      map.set(key, track);
+    }
+  }
+  return map;
+}
+
+function voiceForPoster(poster) {
+  if (!poster) return null;
+  return state.voiceByPoster.get(baseNameWithoutExtension(poster.name)) || null;
+}
+
+function baseNameWithoutExtension(path) {
+  const file = fileNameFromPath(path).split("?")[0].split("#")[0];
+  const dot = file.lastIndexOf(".");
+  return (dot > 0 ? file.slice(0, dot) : file).toLowerCase();
 }
 
 function hasExtension(path, extensions) {
