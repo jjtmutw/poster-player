@@ -104,16 +104,17 @@ input:focus-visible {
 
 .start-panel {
   position: absolute;
+  top: 50%;
   left: 24px;
   right: 24px;
-  bottom: 24px;
+  bottom: auto;
   z-index: 4;
   display: grid;
   grid-template-columns: minmax(170px, 0.7fr) minmax(420px, 1.35fr) auto;
   align-items: start;
   gap: 16px;
   max-width: 1240px;
-  max-height: min(74vh, 760px);
+  max-height: min(86vh, 760px);
   padding: 18px;
   margin: 0 auto;
   overflow: auto;
@@ -122,6 +123,7 @@ input:focus-visible {
   background: var(--panel);
   box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
+  transform: translateY(-50%);
   transition:
     opacity 240ms ease,
     transform 240ms ease,
@@ -131,7 +133,7 @@ input:focus-visible {
 .start-panel.is-hidden {
   visibility: hidden;
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(calc(-50% + 10px));
   pointer-events: none;
 }
 
@@ -415,14 +417,21 @@ input[hidden] {
   .media-order-panel {
     grid-column: 1;
   }
+
+  .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding-top: 6px;
+    background: linear-gradient(180deg, transparent, rgba(18, 18, 20, 0.92) 36%);
+  }
 }
 
 @media (max-width: 720px) {
   .start-panel {
     left: 12px;
     right: 12px;
-    bottom: 12px;
-    max-height: 78vh;
+    max-height: calc(100dvh - 24px);
     gap: 16px;
     padding: 16px;
   }
