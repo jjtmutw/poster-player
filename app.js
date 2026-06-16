@@ -56,6 +56,9 @@ const state = {
   touchStartX: 0,
   touchStartY: 0,
   touchStartTime: 0,
+  pointerStartX: 0,
+  pointerStartY: 0,
+  pointerStartTime: 0,
   tapTimer: 0,
   lastTapTime: 0
 };
@@ -229,8 +232,13 @@ window.addEventListener("load", () => {
   registerServiceWorker();
 });
 
-els.player.addEventListener("touchstart", handleTouchStart, { passive: true });
-els.player.addEventListener("touchend", handleTouchEnd, { passive: false });
+if (window.PointerEvent) {
+  els.player.addEventListener("pointerdown", handlePointerStart);
+  els.player.addEventListener("pointerup", handlePointerEnd);
+} else {
+  els.player.addEventListener("touchstart", handleTouchStart, { passive: true });
+  els.player.addEventListener("touchend", handleTouchEnd, { passive: false });
+}
 
 els.audioPlayer.addEventListener("ended", () => {
   if (isPosterVoiceMode()) {
@@ -1108,6 +1116,25 @@ function registerServiceWorker() {
   });
 }
 
+function handlePointerStart(event) {
+  if (!event.isPrimary || isInteractiveTouch(event.target)) return;
+  state.pointerStartX = event.clientX;
+  state.pointerStartY = event.clientY;
+  state.pointerStartTime = Date.now();
+}
+
+function handlePointerEnd(event) {
+  if (!event.isPrimary || isInteractiveTouch(event.target)) return;
+  if (!state.pointerStartTime) return;
+
+  const dx = event.clientX - state.pointerStartX;
+  const dy = event.clientY - state.pointerStartY;
+  const elapsed = Date.now() - state.pointerStartTime;
+  state.pointerStartTime = 0;
+
+  handleTapOrSwipe(dx, dy, elapsed, event);
+}
+
 function handleTouchStart(event) {
   if (isInteractiveTouch(event.target)) return;
   const touch = event.changedTouches[0];
@@ -1124,10 +1151,15 @@ function handleTouchEnd(event) {
   const dx = touch.clientX - state.touchStartX;
   const dy = touch.clientY - state.touchStartY;
   const elapsed = Date.now() - state.touchStartTime;
-  const absX = Math.abs(dx);
-  const absY = Math.abs(dy);
 
   state.touchStartTime = 0;
+
+  handleTapOrSwipe(dx, dy, elapsed, event);
+}
+
+function handleTapOrSwipe(dx, dy, elapsed, event) {
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
 
   if (absX >= 48 && absX > absY * 1.4) {
     event.preventDefault();
@@ -1146,7 +1178,7 @@ function handleTouchEnd(event) {
 }
 
 function isInteractiveTouch(target) {
-  return target.closest("button, a, input, textarea, select, audio, .media-order-panel");
+  return target.closest("button, a, input, textarea, select, audio, .start-panel, .media-order-panel");
 }
 
 function handleTouchTap() {
