@@ -23,6 +23,7 @@ window.POSTER_PLAYER_CONFIG = {
 
   imageExtensions: ["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "svg"],
   videoExtensions: ["mp4", "webm", "mov", "m4v"],
+  pdfExtensions: ["pdf"],
   audioExtensions: ["mp3"],
 
   shufflePosters: false,

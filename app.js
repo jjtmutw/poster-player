@@ -15,6 +15,7 @@ const config = {
   githubBranch: "main",
   imageExtensions: ["jpg", "jpeg", "png", "webp", "gif", "avif", "bmp", "svg"],
   videoExtensions: ["mp4", "webm", "mov", "m4v"],
+  pdfExtensions: ["pdf"],
   audioExtensions: ["mp3"],
   shufflePosters: false,
   shuffleMusic: false,
@@ -65,6 +66,8 @@ const els = {
   posterB: document.getElementById("posterB"),
   videoA: document.getElementById("videoA"),
   videoB: document.getElementById("videoB"),
+  pdfA: document.getElementById("pdfA"),
+  pdfB: document.getElementById("pdfB"),
   emptyState: document.getElementById("emptyState"),
   emptyMessage: document.getElementById("emptyMessage"),
   startPanel: document.getElementById("startPanel"),
@@ -469,6 +472,7 @@ function applyMediaPreferences(kind, files) {
   const pref = getMediaPreference(kind);
   const order = Array.isArray(pref.order) ? pref.order : [];
   const disabled = new Set(Array.isArray(pref.disabled) ? pref.disabled : []);
+  const durations = pref.durations && typeof pref.durations === "object" ? pref.durations : {};
   const byName = new Map(files.map((file) => [file.name, file]));
   const ordered = [];
 
@@ -480,7 +484,11 @@ function applyMediaPreferences(kind, files) {
   }
 
   ordered.push(...[...byName.values()].sort(compareByName));
-  return ordered.map((file) => ({ ...file, enabled: !disabled.has(file.name) }));
+  return ordered.map((file) => ({
+    ...file,
+    enabled: !disabled.has(file.name),
+    durationSeconds: normalizeOptionalSeconds(durations[file.name])
+  }));
 }
 
 function getMediaPreference(kind) {
@@ -500,7 +508,12 @@ function saveMediaPreference(kind) {
   const items = getAvailableMedia(kind);
   state.mediaPrefs[mediaPreferenceKey(kind)] = {
     order: items.map((item) => item.name),
-    disabled: items.filter((item) => !item.enabled).map((item) => item.name)
+    disabled: items.filter((item) => !item.enabled).map((item) => item.name),
+    durations: Object.fromEntries(
+      items
+        .filter((item) => normalizeOptionalSeconds(item.durationSeconds))
+        .map((item) => [item.name, normalizeOptionalSeconds(item.durationSeconds)])
+    )
   };
   saveSettings();
 }
@@ -557,6 +570,9 @@ function renderMediaOrderList(kind, listEl, items) {
 
     const controls = document.createElement("div");
     controls.className = "media-order-controls";
+    if (kind === "poster") {
+      controls.append(durationControl(kind, index, item));
+    }
     controls.append(
       orderButton("up", kind, index, "上移", index === 0),
       orderButton("down", kind, index, "下移", index === items.length - 1)
@@ -565,6 +581,46 @@ function renderMediaOrderList(kind, listEl, items) {
     row.append(label, controls);
     listEl.append(row);
   });
+}
+
+function durationControl(kind, index, item) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "duration-control";
+
+  const input = document.createElement("input");
+  input.type = "number";
+  input.min = "1";
+  input.max = "3600";
+  input.step = "1";
+  input.inputMode = "numeric";
+  input.className = "duration-input";
+  input.dataset.action = "duration";
+  input.dataset.kind = kind;
+  input.dataset.index = String(index);
+  input.value = item.durationSeconds ? String(item.durationSeconds) : "";
+  input.placeholder = String(Math.max(1, Number(config.slideSeconds) || 8));
+  input.title = "Custom seconds";
+  input.setAttribute("aria-label", `${item.name} custom seconds`);
+
+  wrapper.append(
+    durationButton("duration-dec", kind, index, "-"),
+    input,
+    durationButton("duration-inc", kind, index, "+")
+  );
+  return wrapper;
+}
+
+function durationButton(action, kind, index, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "duration-button";
+  button.dataset.action = action;
+  button.dataset.kind = kind;
+  button.dataset.index = String(index);
+  button.title = label === "+" ? "Increase seconds" : "Decrease seconds";
+  button.setAttribute("aria-label", button.title);
+  button.textContent = label;
+  return button;
 }
 
 function orderButton(action, kind, index, label, disabled) {
@@ -600,10 +656,20 @@ function handleMediaOrderClick(event) {
     moveMediaItem(kind, index, -1);
   } else if (button.dataset.action === "down") {
     moveMediaItem(kind, index, 1);
+  } else if (button.dataset.action === "duration-dec") {
+    adjustMediaDuration(kind, index, -1);
+  } else if (button.dataset.action === "duration-inc") {
+    adjustMediaDuration(kind, index, 1);
   }
 }
 
 function handleMediaOrderChange(event) {
+  const durationInput = event.target.closest("input[data-action='duration']");
+  if (durationInput) {
+    setMediaDuration(durationInput.dataset.kind, Number(durationInput.dataset.index), durationInput.value);
+    return;
+  }
+
   const checkbox = event.target.closest("input[type='checkbox'][data-action='toggle']");
   if (!checkbox) return;
 
@@ -615,6 +681,27 @@ function handleMediaOrderChange(event) {
   items[index].enabled = checkbox.checked;
   saveMediaPreference(kind);
   refreshPlaybackAfterOrderChange(kind);
+}
+
+function adjustMediaDuration(kind, index, delta) {
+  const items = getAvailableMedia(kind);
+  const item = items[index];
+  if (!item) return;
+
+  const base = normalizeOptionalSeconds(item.durationSeconds) || Math.max(1, Number(config.slideSeconds) || 8);
+  setMediaDuration(kind, index, clamp(base + delta, 1, 3600));
+}
+
+function setMediaDuration(kind, index, value) {
+  const items = getAvailableMedia(kind);
+  const item = items[index];
+  if (!item) return;
+
+  item.durationSeconds = normalizeOptionalSeconds(value);
+  saveMediaPreference(kind);
+  renderMediaOrderLists();
+  applyActiveMedia();
+  refreshCurrentPlaybackTiming(kind);
 }
 
 function moveMediaItem(kind, index, delta) {
@@ -672,6 +759,16 @@ function refreshPlaybackAfterOrderChange(kind) {
   }
 }
 
+function refreshCurrentPlaybackTiming(kind) {
+  updateSummary();
+  updateStatus();
+
+  if (kind !== "poster") return;
+  if (state.posters.length === 0) return;
+  if (state.started && isPosterVoiceMode() && voiceForPoster(currentPoster())) return;
+  scheduleNextSlide();
+}
+
 function showPoster(index, instant = false) {
   if (state.posters.length === 0) return;
 
@@ -702,16 +799,17 @@ function showPoster(index, instant = false) {
 
 function mediaSlot(slot) {
   return slot === 0
-    ? { image: els.posterA, video: els.videoA }
-    : { image: els.posterB, video: els.videoB };
+    ? { image: els.posterA, video: els.videoA, pdf: els.pdfA }
+    : { image: els.posterB, video: els.videoB, pdf: els.pdfB };
 }
 
 function prepareSlot(slot, media) {
-  const { image, video } = mediaSlot(slot);
+  const { image, video, pdf } = mediaSlot(slot);
 
   if (isVideoMedia(media)) {
     image.removeAttribute("src");
     image.alt = "";
+    pdf.removeAttribute("src");
     video.src = media.url;
     video.setAttribute("aria-label", media.name);
     video.playsInline = true;
@@ -722,16 +820,27 @@ function prepareSlot(slot, media) {
   video.pause();
   video.removeAttribute("src");
   video.load();
+
+  if (isPdfMedia(media)) {
+    image.removeAttribute("src");
+    image.alt = "";
+    pdf.src = media.url;
+    pdf.title = media.name;
+    return;
+  }
+
+  pdf.removeAttribute("src");
   image.src = media.url;
   image.alt = media.name;
 }
 
 function setSlotActive(slot, active) {
-  const { image, video } = mediaSlot(slot);
+  const { image, video, pdf } = mediaSlot(slot);
   const media = state.posters[state.posterIndex];
-  const activeElement = media && isVideoMedia(media) ? video : image;
+  const activeElement = media && isVideoMedia(media) ? video : isPdfMedia(media) ? pdf : image;
   image.classList.toggle("is-active", active && activeElement === image);
   video.classList.toggle("is-active", active && activeElement === video);
+  pdf.classList.toggle("is-active", active && activeElement === pdf);
 }
 
 function stopSlot(slot) {
@@ -742,6 +851,15 @@ function stopSlot(slot) {
 
 function currentPoster() {
   return state.posters[state.posterIndex] || null;
+}
+
+function currentMediaDurationSeconds() {
+  const media = currentPoster();
+  return media ? normalizeOptionalSeconds(media.durationSeconds) : null;
+}
+
+function currentSlideSeconds() {
+  return currentMediaDurationSeconds() || Math.max(1, Number(config.slideSeconds) || 8);
 }
 
 function startCurrentVideoIfNeeded() {
@@ -764,6 +882,7 @@ function pauseCurrentVideo() {
 function handleVideoEnded(event) {
   const media = currentPoster();
   if (!media || event.currentTarget !== mediaSlot(state.activePoster).video) return;
+  if (currentMediaDurationSeconds()) return;
   if (isPosterVoiceMode() && voiceForPoster(media)) return;
   nextPoster();
 }
@@ -771,8 +890,9 @@ function handleVideoEnded(event) {
 function scheduleNextSlide() {
   window.clearTimeout(state.slideTimer);
   if (state.paused || state.posters.length === 0) return;
-  if (state.started && isVideoMedia(currentPoster())) return;
-  state.slideTimer = window.setTimeout(nextPoster, Math.max(1, Number(config.slideSeconds)) * 1000);
+  const durationSeconds = currentSlideSeconds();
+  if (state.started && isVideoMedia(currentPoster()) && !currentMediaDurationSeconds()) return;
+  state.slideTimer = window.setTimeout(nextPoster, durationSeconds * 1000);
 }
 
 function nextPoster() {
@@ -1092,7 +1212,7 @@ function hideEmpty() {
 }
 
 function posterExtensions() {
-  return [...config.imageExtensions, ...config.videoExtensions];
+  return [...config.imageExtensions, ...config.videoExtensions, ...config.pdfExtensions];
 }
 
 function isPosterVoiceMode() {
@@ -1101,6 +1221,10 @@ function isPosterVoiceMode() {
 
 function isVideoMedia(media) {
   return Boolean(media && hasExtension(media.name, config.videoExtensions));
+}
+
+function isPdfMedia(media) {
+  return Boolean(media && hasExtension(media.name, config.pdfExtensions));
 }
 
 function buildVoiceMap(tracks) {
@@ -1153,6 +1277,13 @@ function normalizeIndex(index, length) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number(value)));
+}
+
+function normalizeOptionalSeconds(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  return Math.round(clamp(seconds, 1, 3600));
 }
 
 function uniqueDirs(dirs) {
