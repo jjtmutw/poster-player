@@ -49,6 +49,7 @@ const state = {
   trackIndex: 0,
   activePoster: 0,
   slideTimer: 0,
+  pdfRenderTasks: {},
   paused: false,
   started: false,
   installPrompt: null,
@@ -97,6 +98,7 @@ const els = {
 };
 
 applySavedSettings();
+setupPdfRenderer();
 document.documentElement.style.setProperty("--transition-ms", `${config.transitionMs}ms`);
 els.statusBar.hidden = !config.showStatusBar;
 els.audioPlayer.volume = clamp(config.audioVolume, 0, 1);
@@ -384,6 +386,12 @@ function resolveGithubRepo() {
 
 function rawGithubUrl(repo, dir, fileName) {
   return `https://raw.githubusercontent.com/${repo.owner}/${repo.name}/${config.githubBranch}/${trimSlashes(dir)}/${encodeURIComponent(fileName)}`;
+}
+
+function setupPdfRenderer() {
+  if (!window.pdfjsLib) return;
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 }
 
 function setupSettingsForm() {
@@ -817,7 +825,7 @@ function prepareSlot(slot, media) {
   if (isVideoMedia(media)) {
     image.removeAttribute("src");
     image.alt = "";
-    pdf.removeAttribute("src");
+    clearPdfCanvas(pdf);
     video.src = media.url;
     video.setAttribute("aria-label", media.name);
     video.playsInline = true;
@@ -832,12 +840,11 @@ function prepareSlot(slot, media) {
   if (isPdfMedia(media)) {
     image.removeAttribute("src");
     image.alt = "";
-    pdf.src = media.url;
-    pdf.title = media.name;
+    renderPdfFirstPage(slot, media);
     return;
   }
 
-  pdf.removeAttribute("src");
+  clearPdfCanvas(pdf);
   image.src = media.url;
   image.alt = media.name;
 }
@@ -853,8 +860,78 @@ function setSlotActive(slot, active) {
 
 function stopSlot(slot) {
   const { video } = mediaSlot(slot);
+  cancelPdfRender(slot);
   video.pause();
   video.currentTime = 0;
+}
+
+async function renderPdfFirstPage(slot, media) {
+  const { pdf } = mediaSlot(slot);
+  clearPdfCanvas(pdf);
+  cancelPdfRender(slot);
+
+  if (!window.pdfjsLib) {
+    els.audioStatus.textContent = "PDF: renderer is still loading";
+    return;
+  }
+
+  const renderToken = `${media.url}:${Date.now()}`;
+  pdf.dataset.renderToken = renderToken;
+
+  try {
+    const loadingTask = window.pdfjsLib.getDocument({ url: media.url });
+    state.pdfRenderTasks[slot] = loadingTask;
+    const documentProxy = await loadingTask.promise;
+    if (pdf.dataset.renderToken !== renderToken) return;
+
+    const page = await documentProxy.getPage(1);
+    if (pdf.dataset.renderToken !== renderToken) return;
+
+    const baseViewport = page.getViewport({ scale: 1 });
+    const bounds = els.player.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const scale = Math.max(
+      0.1,
+      Math.min(bounds.width / baseViewport.width, bounds.height / baseViewport.height) * dpr
+    );
+    const viewport = page.getViewport({ scale });
+    const context = pdf.getContext("2d");
+
+    pdf.width = Math.floor(viewport.width);
+    pdf.height = Math.floor(viewport.height);
+    pdf.setAttribute("aria-label", `${media.name} page 1`);
+
+    const renderTask = page.render({ canvasContext: context, viewport });
+    state.pdfRenderTasks[slot] = renderTask;
+    await renderTask.promise;
+  } catch (error) {
+    if (error && error.name === "RenderingCancelledException") return;
+    console.error(error);
+    els.audioStatus.textContent = `PDF: cannot render ${media.name}`;
+  } finally {
+    if (pdf.dataset.renderToken === renderToken) {
+      delete state.pdfRenderTasks[slot];
+    }
+  }
+}
+
+function cancelPdfRender(slot) {
+  const task = state.pdfRenderTasks[slot];
+  if (task && typeof task.destroy === "function") {
+    task.destroy();
+  } else if (task && typeof task.cancel === "function") {
+    task.cancel();
+  }
+  delete state.pdfRenderTasks[slot];
+}
+
+function clearPdfCanvas(canvas) {
+  canvas.removeAttribute("aria-label");
+  canvas.removeAttribute("data-render-token");
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width || 1, canvas.height || 1);
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 function currentPoster() {
